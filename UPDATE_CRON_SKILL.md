@@ -24,7 +24,7 @@ Leave the user with:
 1. the existing local repository untouched and reused in place
 2. a freshly generated `cronjob_prompt.generated.txt` pointing to the real local path
 3. a Hermes cron job whose prompt matches that generated file
-4. delivery set to `feishu` rather than `local`
+4. delivery set to `wechat` rather than `local`
 
 If the repository is in GitHub Pages mode, also leave the user with:
 
@@ -113,7 +113,7 @@ Confirm all of the following:
 
 - there is exactly one active daily cron job for this repository workflow
 - the active job uses the latest generated prompt
-- delivery is set to `feishu`
+- delivery is set to `wechat`
 - local mode stays local-only
 - GitHub Pages mode contains the publish step and points to the user's own writable fork
 
