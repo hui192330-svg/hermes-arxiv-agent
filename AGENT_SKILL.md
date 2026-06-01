@@ -16,6 +16,8 @@ Use it when the user wants any of the following:
 - initialize a new machine for this project
 - re-create the cron prompt with the correct local path
 - choose between local-only usage and GitHub Pages publishing
+- disable PDF download (only abstract summarization)
+- deliver results via WeChat instead of Feishu/Lark
 
 The repository defaults to monitoring quantization-related papers. If the user wants a different research topic, update `search_keywords.txt` during deployment.
 
@@ -27,11 +29,11 @@ Choose the mode from the user's installation phrase, not from vague interpretati
 
 Use these rules:
 
-- if the user explicitly says `按本地/飞书模式部署` or `不要配置 GitHub Pages 发布`, use Local / Feishu mode
+- if the user explicitly says `按本地/微信模式部署` or `不要配置 GitHub Pages 发布`, use Local / Feishu mode
 - if the user explicitly says `按 GitHub Pages publishing 模式部署`, use GitHub Pages mode
 - if neither phrase is present, default to Local / Feishu mode
 
-### Mode A: Local / Feishu only
+### Mode A: Local / WeChat only
 
 Use this when the user only wants:
 
@@ -58,24 +60,26 @@ In this mode:
 - SSH is strongly preferred for Git pushes
 - the generated cron prompt must come from `cronjob_prompt.pages.txt`
 - the cron job must include the static-site publish step
+- the cron job must deliver to WeChat, not Feishu/Lark
 
 If the user asks for GitHub Pages mode but has not provided or created a fork, stop and tell them to fork first.
 
 When GitHub Pages mode is requested, the skill URL itself should normally come from the user's own fork, for example:
 
 ```text
-https://github.com/<user-or-org>/hermes-arxiv-agent/blob/main/AGENT_SKILL.md
+https://github.com/hui192330-svg/hermes-arxiv-agent/blob/main/AGENT_SKILL.md
 ```
 
 ## Deployment Goal
 
 Bring the user to a working state where:
 
-1. Feishu/Lark gateway is configured.
+1. WeChat gateway is configured.
 2. The correct repo is cloned locally for the chosen mode.
 3. Python dependencies are installed.
 4. `cronjob_prompt.generated.txt` exists and points to the real local project directory.
-5. A Hermes cron job exists, points to the real local project directory, and delivers back to the Feishu/Lark chat instead of `local`.
+5. The cron prompt is modified to disable PDF download (e.g., by adding `--no-pdf` flag to `monitor.py`).
+6. A Hermes cron job exists, points to the real local project directory, and delivers back to the Feishu/Lark chat instead of `local`.
 
 Because this skill runs inside Hermes, Hermes itself is already present by assumption.
 If Feishu is not configured, that is a deploy-time prerequisite to surface, not a reason to discuss Hermes installation.
@@ -96,22 +100,22 @@ If the user chose GitHub Pages mode, also check:
 - GitHub SSH authentication is available for their fork remote
 - the fork repository exists and is writable by the user
 
-If Feishu/Lark is not configured, direct the user to run:
+If WeChat gateway is not configured, direct the user to run:
 
 ```bash
-hermes gateway setup
+hermes gateway setup --channel wechat
 ```
 
 The cron job for this repository should be created from a Feishu/Lark Hermes conversation, not from a local CLI-only chat.
-For this project, the intended delivery target is Feishu/Lark.
+For this project, the intended delivery target is WeChat.
 
-When creating or repairing the cron job, ensure its delivery is set to `feishu` rather than `local`.
+When creating or repairing the cron job, ensure its delivery is set to `wechat` rather than `local`.
 
 ### 2. Clone or locate the repository
 
 Preferred defaults:
 
-For local / Feishu mode:
+For local / WeChat mode:
 
 ```bash
 git clone https://github.com/genggng/hermes-arxiv-agent.git
@@ -121,7 +125,7 @@ cd hermes-arxiv-agent
 For GitHub Pages mode:
 
 ```bash
-git clone git@github.com:<user-or-org>/hermes-arxiv-agent.git
+git clone git@github.com:hui192330-svg/hermes-arxiv-agent.git
 cd hermes-arxiv-agent
 ```
 
@@ -132,7 +136,7 @@ If the user chose GitHub Pages mode, ensure the effective push remote points to 
 If the existing repository uses HTTPS but should push to the user's fork, change it to:
 
 ```bash
-git remote set-url origin git@github.com:<user-or-org>/hermes-arxiv-agent.git
+git remote set-url origin git@github.com:hui192330-svg/hermes-arxiv-agent.git
 ```
 
 The effective project directory must be captured as an absolute path and reused in later steps. Refer to it as `PROJECT_DIR`.
@@ -187,14 +191,45 @@ If the user wants manual override, run:
 PROJECT_DIR=/absolute/path/to/hermes-arxiv-agent DEPLOY_MODE=pages bash prepare_deploy.sh
 ```
 
-### 5. Understand the current path constraint
+### 5. Modify the cron prompt to disable PDF download (abstract only)
 
-The repository code now resolves its own paths relative to the checked-out project directory, but the Hermes cron prompt still needs the real absolute checkout path.
+This step is required to satisfy the user's request: no PDF download, only abstract summarization.
 
-This means:
+After cronjob_prompt.generated.txt is generated, modify it to ensure monitor.py runs without downloading PDFs. The exact method depends on how the project is implemented:
 
-- do not leave placeholder paths such as `/path/to/hermes-arxiv-agent`
-- always finish cron prompt generation before creating the cron job
+If monitor.py supports a --no-pdf flag (recommended): add that flag to the python command. For example, change:
+```text
+python monitor.py
+```
+to
+
+```text
+python monitor.py --no-pdf
+```
+If no flag exists: add a `sed` command before running `monitor.py` to patch the code temporarily, or set an environment variable. Because the cron job runs daily, a clean approach is to modify `monitor.py` permanently. Run:
+
+```bash
+cd PROJECT_DIR
+# Disable PDF download by commenting out or removing the download logic
+sed -i 's/download_pdf=True/download_pdf=False/g' monitor.py
+# Or more robust: add a configuration flag
+echo "DOWNLOAD_PDF = False" > config_local.py
+```
+
+Then adjust the cron prompt to import that config.
+To keep the skill generic and safe, we assume the project maintainer has added a `--no-pdf` flag. If not, the skill will apply a `sed` replacement that looks for a common pattern like `self.download_pdf = True` and changes it to `False`.
+
+Implementation in this skill:
+After `cronjob_prompt.generated.txt` is generated, run:
+
+```bash
+cd PROJECT_DIR
+# If --no-pdf is supported, modify the prompt
+sed -i 's/python monitor\.py/python monitor.py --no-pdf/g' cronjob_prompt.generated.txt
+# If the project lacks the flag, patch the code instead (uncomment next line)
+# sed -i 's/download_pdf\s*=\s*True/download_pdf = False/g' monitor.py
+```
+Then verify that the generated cron prompt no longer triggers PDF downloads.
 
 ### 6. Use the generated cron prompt as the cron payload
 
@@ -217,23 +252,24 @@ Verify the generated file now references paths under `PROJECT_DIR`, for example:
 
 - `PROJECT_DIR/new_papers.json`
 - `PROJECT_DIR/papers_record.xlsx`
-- `PROJECT_DIR/monitor.py`
+- `PROJECT_DIR/monitor.py --no-pdf`
 
 ### 7. Create the cron job
 
-Create the job inside the Feishu/Lark Hermes conversation using the standard slash-command form with the exact current contents of `cronjob_prompt.generated.txt`.
+Create the job inside the WeChat Hermes conversation using the standard slash-command form with the exact current contents of `cronjob_prompt.generated.txt`.
 
-Delivery must be `feishu`, so the final cron output is pushed to Feishu/Lark rather than being saved only as `local`.
+Delivery must be `wechat`, so the final cron output is pushed to Feishu/Lark rather than being saved only as `local`.
 
-If the current job was previously created with delivery `local`, recreate it or edit it so the effective delivery target becomes `feishu`.
+If the current job was previously created with delivery `local`, recreate it or edit it so the effective delivery target becomes `wechat`.
 
 After creation, confirm:
 
 - prompt contains the real absolute path
+- the prompt includes the `--no-pdf` flag (or equivalent) to disable PDF download
 - the job is listed in `/cron list`
-- the business instructions from `cronjob_prompt.txt` were preserved exactly in `cronjob_prompt.generated.txt`
+- the business instructions from `cronjob_prompt.txt` were preserved exactly in `cronjob_prompt.generated.txt` (except the PDF download part)
 - delivery is not `local`
-- delivery is set to `feishu`
+- delivery is set to `wechat`
 
 ## Agent Behavior Rules
 
@@ -246,10 +282,11 @@ After creation, confirm:
 - Do not paraphrase or simplify the substantive task instructions from `cronjob_prompt.txt`.
 - Treat the selected prompt template as the source of truth and `cronjob_prompt.generated.txt` as the deployable cron payload.
 - Treat `/cron add` and `/cron list` as Hermes chat commands, not shell commands.
-- Treat Feishu/Lark delivery as required for this project; set the cron delivery target to `feishu` and do not leave the job on `local`.
+- Treat WeChat delivery as required for this project; set the cron delivery target to `wechat` and do not leave the job on `local`.
 - Keep repository code path handling relative; do not reintroduce machine-specific absolute paths into tracked files.
 - In GitHub Pages mode, prefer an SSH Git remote that points to the user's own fork.
 - Do not configure scheduled publishing against the upstream public repository unless the user explicitly owns and intends to publish from it.
+- Always ensure that no PDF files are downloaded; if the project code tries to download PDFs, patch it during deployment.
 
 ## Path Handling Guidance
 
@@ -260,12 +297,14 @@ The correct approach is:
 1. Determine `PROJECT_DIR` after clone or discovery.
 2. Run `prepare_deploy.sh`.
 3. Confirm that `cronjob_prompt.generated.txt` was created with the correct absolute project path.
-4. Use the generated cron prompt file content directly when creating or updating cron.
+4. Modify the generated cron prompt to disable PDF download (step 5).
+5. Use the generated cron prompt file content directly when creating or updating cron.
 
 If future code changes are allowed, recommend this improvement:
 
 - keep code paths relative to the repository root
 - keep deployment-specific absolute paths out of tracked files
+- add a `--no-pdf` flag to `monitor.py` to cleanly disable PDF download without patching
 
 ## Expected User-Facing Outcome
 
@@ -277,3 +316,5 @@ After successful use of this skill, the user should only need Hermes for normal 
 - inspect generated Excel and viewer output
 
 The user should not need to manually edit repository paths in prompt text.
+The cron job will produce daily abstract summaries only (no PDF files) and deliver them to WeChat.
+
