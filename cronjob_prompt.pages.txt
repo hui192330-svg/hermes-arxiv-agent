@@ -1,4 +1,4 @@
-## 任务：每天自动监控 arXiv 论文并推送飞书
+## 任务：每天自动监控 arXiv 论文并推送微信
 
 ### 第一步：执行 Python 脚本
 cd 到项目根目录后，用 python3 运行：
@@ -74,7 +74,7 @@ cd /path/to/hermes-arxiv-agent && bash scripts/publish_viewer.sh
 - push 到你自己的 GitHub fork 后会触发 GitHub Actions 更新 GitHub Pages
 - 当前仓库必须是你自己的 fork，或 `PUBLISH_REMOTE` 必须明确指向你自己的可写远端
 
-### 第八步：构建飞书 Markdown 消息
+### 第八步：构建微信 Markdown 消息
 输出格式：
 ```
 📚 **论文日报** | YYYY-MM-DD
@@ -82,4 +82,4 @@ cd /path/to/hermes-arxiv-agent && bash scripts/publish_viewer.sh
 [每篇：标题、arXiv ID、日期、作者、单位、PDF 链接、90-150 字中文摘要]
 PDF 已下载至 papers/，记录已更新至 papers_record.xlsx，网站数据已更新至 viewer/papers_data.json。
 ```
-**重要：最终回复只输出飞书消息文本，不要输出其他说明。**
+**重要：最终回复只输出微信消息文本，不要输出其他说明。**
